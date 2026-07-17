@@ -4,6 +4,9 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>ProofPitch — trustless World Cup prediction pools</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@500;600;700&family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="style.css">
 <script src="https://unpkg.com/@solana/web3.js@1.95.8/lib/index.iife.min.js"></script>
 </head>
@@ -21,10 +24,10 @@
 </header>
 
 <section class="how">
-  <div class="how-step"><b>1 — Stake</b><span>Back YES or NO on a match predicate. Funds lock in a neutral escrow PDA — there is no house.</span></div>
-  <div class="how-step"><b>2 — Play</b><span>TxODDS anchors Merkle roots of every score statistic on Solana, all match long.</span></div>
-  <div class="how-step"><b>3 — Prove</b><span>Anyone submits the Merkle proof; the escrow CPIs into TxLINE validate_stat on-chain.</span></div>
-  <div class="how-step"><b>4 — Collect</b><span>Winners claim pro-rata from the pot. No admin, no oracle multisig, no trust.</span></div>
+  <div class="how-step" data-n="1"><b>Stake</b><span>Back YES or NO on a match predicate. Funds lock in a neutral escrow PDA — there is no house.</span></div>
+  <div class="how-step" data-n="2"><b>Play</b><span>TxODDS anchors Merkle roots of every score statistic on Solana, all match long.</span></div>
+  <div class="how-step" data-n="3"><b>Prove</b><span>Anyone submits the Merkle proof; the escrow CPIs into TxLINE validate_stat on-chain.</span></div>
+  <div class="how-step" data-n="4"><b>Collect</b><span>Winners claim pro-rata from the pot. No admin, no oracle multisig, no trust.</span></div>
 </section>
 
 <main id="fixtures">

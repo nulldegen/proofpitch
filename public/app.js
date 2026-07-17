@@ -200,16 +200,15 @@ function render() {
 function fixtureStatus(f, now) {
   const sc = f.score;
   if (sc && (sc.etFinal || sc.finished)) return { cls: 'final', text: 'FULL TIME' };
-  if (sc && sc.statusId && sc.statusId >= 2 && sc.statusId < 100) return { cls: 'live', text: 'LIVE' };
+  if (sc && sc.statusId && sc.statusId >= 2 && sc.statusId < 100) {
+    const phase = sc.statusId === 2 ? 'LIVE · 1H' : sc.statusId === 3 ? 'HALF-TIME' : sc.statusId === 4 ? 'LIVE · 2H' : 'LIVE';
+    return { cls: 'live', text: phase };
+  }
   if (f.startTime < now) return { cls: '', text: 'IN PLAY / RECENT' };
   return { cls: '', text: 'UPCOMING' };
 }
 
-function scoreText(f) {
-  const sc = f.score;
-  if (!sc || sc.statusId === 1 || sc.statusId == null && !sc.action) return 'vs';
-  return 'LIVE';
-}
+function scoreText() { return 'vs'; }
 
 function marketRow(f, m, status) {
   const open = m.state === 'open';
@@ -222,12 +221,20 @@ function marketRow(f, m, status) {
   }
   if (settleReady) actions.push(`<button class="small" onclick='ppSettle(${JSON.stringify(m.address)})'>Settle with proof</button>`);
   if (m.receipt || m.state.startsWith('settled')) actions.push(`<button class="small ghost" onclick='ppReceipt(${JSON.stringify(m.address)})'>Receipt</button>`);
-  const prob = m.impliedProb != null ? `${(m.impliedProb * 100).toFixed(1)}%` : '—';
+  const probCell = m.impliedProb != null
+    ? `<div class="prob-wrap"><span class="prob-num">${(m.impliedProb * 100).toFixed(1)}%</span>
+       <div class="prob-bar"><i style="width:${Math.min(100, m.impliedProb * 100).toFixed(1)}%"></i></div></div>`
+    : `<div class="prob-wrap"><span class="prob-num na">—</span></div>`;
+  const pillCls = locked && open ? 'locked' : m.state;
+  const pillText = locked && open ? 'LOCKED' : m.state.replace('_', ' ').toUpperCase();
   return `<tr>
     <td><div class="m-label">${esc(m.label)}</div><div class="m-explain">${esc(m.explain)}</div></td>
-    <td class="prob">${prob}</td>
-    <td class="pool"><span class="yes">YES ${fmtSol(m.yesPool)}</span> / <span class="no">NO ${fmtSol(m.noPool)}</span> SOL</td>
-    <td class="state-${m.state}">${m.state.replace('_', ' ').toUpperCase()}${locked && open ? ' (LOCKED)' : ''}</td>
+    <td>${probCell}</td>
+    <td><div class="pool">
+      <span class="pool-chip yes${m.yesPool ? '' : ' empty'}">YES ${fmtSol(m.yesPool)}</span>
+      <span class="pool-chip no${m.noPool ? '' : ' empty'}">NO ${fmtSol(m.noPool)}</span>
+    </div></td>
+    <td><span class="pill ${pillCls}">${pillText}</span></td>
     <td><div class="actions">${actions.join('')}</div></td>
   </tr>`;
 }
