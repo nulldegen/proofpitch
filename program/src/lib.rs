@@ -505,4 +505,6 @@ pub enum PitchError {
     WrongMarket,
     #[msg("position owned by someone else")]
     NotYourPosition,
+    #[msg("arithmetic overflow")]
+    Overflow,
 }

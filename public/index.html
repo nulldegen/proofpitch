@@ -1,0 +1,45 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ProofPitch — trustless World Cup prediction pools</title>
+<link rel="stylesheet" href="style.css">
+<script src="https://unpkg.com/@solana/web3.js@1.95.8/lib/index.iife.min.js"></script>
+</head>
+<body>
+<header>
+  <div class="brand">
+    <span class="logo">PROOF<b>PITCH</b></span>
+    <span class="tagline">World Cup pools settled by cryptographic proof, not by a bookmaker</span>
+  </div>
+  <div class="head-right">
+    <span class="chip net" id="net">DEVNET</span>
+    <a class="chip mono" id="program-link" target="_blank" rel="noopener">program</a>
+    <button id="wallet-btn">Connect Phantom</button>
+  </div>
+</header>
+
+<section class="how">
+  <div class="how-step"><b>1 — Stake</b><span>Back YES or NO on a match predicate. Funds lock in a neutral escrow PDA — there is no house.</span></div>
+  <div class="how-step"><b>2 — Play</b><span>TxODDS anchors Merkle roots of every score statistic on Solana, all match long.</span></div>
+  <div class="how-step"><b>3 — Prove</b><span>Anyone submits the Merkle proof; the escrow CPIs into TxLINE validate_stat on-chain.</span></div>
+  <div class="how-step"><b>4 — Collect</b><span>Winners claim pro-rata from the pot. No admin, no oracle multisig, no trust.</span></div>
+</section>
+
+<main id="fixtures">
+  <div class="loading">Connecting to the live TxLINE feed…</div>
+</main>
+
+<footer>
+  <span>ProofPitch — TxODDS World Cup Hackathon 2026, Prediction Markets &amp; Settlement track.</span>
+  <span>Devnet SOL only, zero real funds. Data: TxLINE by TxODDS. Settlement: on-chain Merkle proofs.</span>
+</footer>
+
+<div class="modal-back" id="modal-back" hidden>
+  <div class="modal" id="modal"></div>
+</div>
+
+<script src="app.js"></script>
+</body>
+</html>
