@@ -1,0 +1,29 @@
+{
+  "name": "proofpitch",
+  "version": "1.0.0",
+  "description": "Trustless World Cup prediction pools settled by TxLINE Merkle proofs on Solana",
+  "main": "src/index.ts",
+  "scripts": {
+    "start": "tsx src/index.ts",
+    "dev": "tsx watch src/index.ts",
+    "test": "tsx src/dev/test_core.ts",
+    "probe": "tsx src/dev/probe_validation.ts"
+  },
+  "type": "module",
+  "license": "SEE LICENSE IN LICENSE",
+  "dependencies": {
+    "@coral-xyz/anchor": "^0.32.1",
+    "@solana/spl-token": "^0.4.14",
+    "@solana/web3.js": "^1.98.4",
+    "@types/express": "^5.0.6",
+    "@types/node": "^26.1.0",
+    "@types/ws": "^8.18.1",
+    "axios": "^1.18.1",
+    "bs58": "^6.0.0",
+    "express": "^5.2.1",
+    "tsx": "^4.23.0",
+    "tweetnacl": "^1.0.3",
+    "typescript": "^6.0.3",
+    "ws": "^8.21.0"
+  }
+}

@@ -1,0 +1,8 @@
+node_modules/
+data/
+dist/
+.env
+*.keypair.json
+SUBMISSION.md
+video-build/out/
+*.log
