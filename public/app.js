@@ -160,9 +160,15 @@ function claimable(m) {
 
 // ── render ──────────────────────────────────────────────────────────────────
 
+let lastRendered = '';
+
 function render() {
   const d = state.data;
   if (!d) return;
+  // Skip the full re-render (and the button churn it causes) when nothing changed.
+  const sig = JSON.stringify(d) + (state.wallet ?? '');
+  if (sig === lastRendered) return;
+  lastRendered = sig;
   $('#net').textContent = d.network.toUpperCase();
   const pl = $('#program-link');
   pl.textContent = `program ${d.programId.slice(0, 4)}…${d.programId.slice(-4)}`;

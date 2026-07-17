@@ -117,6 +117,9 @@ npm start           # live devnet feeds + on-chain markets, dashboard on :4100
 npm test            # offline deterministic checks (no network, no chain)
 npm run probe       # end-to-end proof-of-primitive: fetches a real Merkle proof
                     # for a finished fixture and calls validate_stat on-chain
+npm run rehearse    # full lifecycle on devnet against a finished fixture:
+                    # create_market -> join YES/NO -> settle with the real
+                    # Merkle proof (CPI validate_stat) -> claim the winnings
 ```
 
 First run: a burner keypair is generated, registered with TxLINE's free tier
@@ -149,6 +152,9 @@ generated IDL in [idl/proofpitch.json](idl/proofpitch.json).
 - [x] Escrow program: create/join/settle-via-CPI/claim/void
 - [x] Auto-market engine + keeper settlement
 - [x] Broadcast dashboard + Phantom staking + proof receipts
+- [x] Full lifecycle rehearsed on devnet — France v Spain (0-2, Jul 14):
+      create → stake both sides → settle NO via on-chain proof → claim
+      (`npm run rehearse`; the receipt is visible in the dashboard)
 - [ ] Public deployment
 - [ ] Demo video
 - [ ] Submission on Superteam Earn (deadline July 19, 23:59 UTC)

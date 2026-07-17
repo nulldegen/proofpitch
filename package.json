@@ -7,7 +7,8 @@
     "start": "tsx src/index.ts",
     "dev": "tsx watch src/index.ts",
     "test": "tsx src/dev/test_core.ts",
-    "probe": "tsx src/dev/probe_validation.ts"
+    "probe": "tsx src/dev/probe_validation.ts",
+    "rehearse": "tsx src/dev/rehearsal.ts"
   },
   "type": "module",
   "license": "SEE LICENSE IN LICENSE",
