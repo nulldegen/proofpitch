@@ -52,7 +52,7 @@ async function main() {
       const acc = engine.markets.get(entry.address);
       if (acc && acc.state !== 0) continue;
       try {
-        const history = parseScoreHistory(await feed.scoresHistorical(entry.fixtureId));
+        const history = await feed.finalisedHistory(entry.fixtureId);
         if (history.map(r => scoreSummary(r)).some(s => s.etFinal)) {
           await engine.settleFixture(entry.fixtureId);
         }

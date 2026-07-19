@@ -134,6 +134,8 @@ export class Engine {
     if (!this.fixtures.has(id)) return;   // not a WC fixture we know
     const prev = this.scores.get(id);
     if (prev && prev.seq > summary.seq) return;
+    // Not every record repeats the Score cells — carry the last known scoreline.
+    if (!summary.goals && prev?.goals) summary.goals = prev.goals;
     this.scores.set(id, summary);
     if (summary.etFinal) void this.settleFixture(id).catch(e => console.error(`[engine] settle ${id}:`, e.message));
   }
@@ -211,8 +213,8 @@ export class Engine {
     const spec = standardMarkets(fx.p1, fx.p2).find(s => s.code === entry.code);
     if (!spec) throw new Error('unknown spec ' + entry.code);
 
-    // 1. locate the finalised record's seq
-    const history = parseScoreHistory(await this.feed.scoresHistorical(entry.fixtureId));
+    // 1. locate the finalised record's seq (fallback across score endpoints)
+    const history = await this.feed.finalisedHistory(entry.fixtureId);
     const finals = history.map(r => scoreSummary(r)).filter(s => s.etFinal);
     if (!finals.length) throw new Error('no finalised record yet');
     const seq = finals[finals.length - 1].seq;

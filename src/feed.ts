@@ -163,6 +163,28 @@ export interface ScoreSummary {
   h1Final: boolean;    // halftime reached — first-half markets can settle
   etFinal: boolean;    // the whole game is over
   abandoned: boolean;
+  goals: GoalsPair | null;  // live scoreline when the record carries Score cells
+}
+
+export interface GoalsPair { p1: number; p2: number }
+
+// Score cells are cumulative and sparse: an existing period object with no
+// Goals key means 0 for that period. Prefer per-period sums (incl. ET) over
+// Total, which on this feed covers regulation only.
+function cellGoals(p: unknown): number {
+  if (!p || typeof p !== 'object') return 0;
+  const c = p as Record<string, { Goals?: number } | undefined>;
+  const periods = [c.H1?.Goals, c.H2?.Goals, c.ET1?.Goals, c.ET2?.Goals];
+  if (periods.some(v => v != null)) return periods.reduce((a: number, v) => a + (v ?? 0), 0);
+  return c.Total?.Goals ?? 0;
+}
+
+export function liveGoals(raw: RawScore): GoalsPair | null {
+  const sc = raw.Score;
+  if (!sc || typeof sc !== 'object') return null;
+  const cells = sc as Record<string, unknown>;
+  if (!('Participant1' in cells) && !('Participant2' in cells)) return null;
+  return { p1: cellGoals(cells.Participant1), p2: cellGoals(cells.Participant2) };
 }
 
 // The live devnet feed keeps GameState at "scheduled" for the whole match and
@@ -202,6 +224,7 @@ export function scoreSummary(raw: RawScore): ScoreSummary {
       || (statusId !== null && statusId >= HT_STATUS_ID),
     etFinal,
     abandoned: gs === 'a' || /aband|cancel|postpon/.test(gs) || /aband|cancel|postpon/.test(action),
+    goals: liveGoals(raw),
   };
 }
 
@@ -304,6 +327,22 @@ export class FeedClient {
   scoresUpdates(fixtureId: number | string): Promise<RawScore[]> {
     return this.get<RawScore[]>(`/scores/updates/${fixtureId}`);
   }
+  /**
+   * Score records containing a finalised entry, trying every endpoint.
+   * The live feed populates them inconsistently: /historical can stay empty
+   * for a fixture whose /updates and /snapshot both carry game_finalised
+   * (observed on the bronze final after a stream "disconnected" action).
+   */
+  async finalisedHistory(fixtureId: number | string): Promise<RawScore[]> {
+    for (const call of [this.scoresHistorical, this.scoresUpdates, this.scoresSnapshot]) {
+      try {
+        const recs = parseScoreHistory(await call.call(this, fixtureId));
+        if (recs.some(r => scoreSummary(r).etFinal)) return recs;
+      } catch { /* endpoint may 404 for this fixture — try the next one */ }
+    }
+    return [];
+  }
+
   scoresHistorical(fixtureId: number | string): Promise<RawScore[]> {
     return this.get<RawScore[]>(`/scores/historical/${fixtureId}`);
   }

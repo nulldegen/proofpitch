@@ -30,7 +30,7 @@ ProofPitch removes that party entirely:
 
 ## Live
 
-- **App:** _deployment link in the submission_
+- **App:** https://deletion-lettuce-fragrance.ngrok-free.dev
 - **Escrow program (devnet):** `F67iF8GhvpJSmoPRNqTR7ZXHXAkGEruAdzcP4ntdLp7R`
 - **TxLINE oracle (devnet):** `6pW64gN1s2uqjHkn1unFeEjAwJkPGHoppGvS715wyP2J`
 - **Demo video:** link in the hackathon submission
@@ -155,8 +155,11 @@ generated IDL in [idl/proofpitch.json](idl/proofpitch.json).
 - [x] Full lifecycle rehearsed on devnet — France v Spain (0-2, Jul 14):
       create → stake both sides → settle NO via on-chain proof → claim
       (`npm run rehearse`; the receipt is visible in the dashboard)
-- [ ] Public deployment
-- [ ] Demo video
+- [x] Live run on the bronze final (France 4-6 England, Jul 18): all seven
+      markets settled autonomously with real TxLINE Merkle proofs at full
+      time, winning positions claimed — receipts in the dashboard
+- [x] Public deployment (24/7 live instance)
+- [x] Demo video
 - [ ] Submission on Superteam Earn (deadline July 19, 23:59 UTC)
 
 ## Author

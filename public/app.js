@@ -1,29 +1,197 @@
-/* ProofPitch dashboard — live state via WS, staking via Phantom or demo wallet. */
+/* ProofPitch dashboard — live state via WS, staking via Phantom or demo wallet.
+ *
+ * Rendering strategy: a full re-render only when the page STRUCTURE changes
+ * (markets appear, states flip, wallet connects). Value-only ticks — odds,
+ * pools, scores — update in place so CSS transitions can animate them, and
+ * every change is diffed into the live event feed on the right.
+ */
 'use strict';
 
 const $ = (sel, el) => (el || document).querySelector(sel);
+const $$ = (sel, el) => [...(el || document).querySelectorAll(sel)];
 const state = { data: null, wallet: null };
 
 const SOL = 1e9;
 const fmtSol = (l) => (l / SOL).toFixed(l % SOL === 0 ? 0 : 3);
 const explorer = (sig) => `https://explorer.solana.com/tx/${sig}?cluster=devnet`;
 const explorerAddr = (a) => `https://explorer.solana.com/address/${a}?cluster=devnet`;
+const pause = (ms) => new Promise((r) => setTimeout(r, ms));
 
 // ── data ────────────────────────────────────────────────────────────────────
 
 async function load() {
   const res = await fetch('/api/state');
-  state.data = await res.json();
-  render();
+  applyState(await res.json());
 }
 
 function connectWs() {
   const ws = new WebSocket(`${location.protocol === 'https:' ? 'wss' : 'ws'}://${location.host}`);
+  ws.onopen = () => {
+    $('#feed-dot').classList.add('on');
+    $('#feed-conn').textContent = 'connected';
+    pushFeed([{ tag: 'FEED', cls: '', title: 'TxLINE relay connected', sub: 'odds and scores streaming' }]);
+  };
   ws.onmessage = (ev) => {
     const msg = JSON.parse(ev.data);
-    if (msg.type === 'state') { state.data = msg.data; render(); }
+    if (msg.type === 'state') applyState(msg.data);
   };
-  ws.onclose = () => setTimeout(connectWs, 3000);
+  ws.onclose = () => {
+    $('#feed-dot').classList.remove('on');
+    $('#feed-conn').textContent = 'reconnecting';
+    setTimeout(connectWs, 3000);
+  };
+}
+
+let lastStructSig = '';
+
+function applyState(next) {
+  const prev = state.data;
+  state.data = next;
+  const events = prev ? diffEvents(prev, next) : [];
+  const sig = structSig(next);
+  if (sig !== lastStructSig) {
+    lastStructSig = sig;
+    renderFull();
+  } else {
+    updateValues(next);
+  }
+  if (events.length) {
+    pushFeed(events);
+    eventFx(events);
+  }
+}
+
+// Anything that changes WHICH elements exist (not just their numbers).
+function structSig(d) {
+  const now = Date.now();
+  return d.network + d.programId + (state.wallet ?? '') + d.fixtures.map((f) =>
+    `${f.fixtureId}:${fixtureStatus(f, now).text}:` + f.markets.map((m) =>
+      m.address + m.state + (isLocked(m) ? 'L' : '') + (settleReady(f, m) ? 'S' : '') + (m.receipt ? 'R' : '')
+    ).join(',')
+  ).join(';');
+}
+
+function isLocked(m) { return m.state === 'open' && m.lockTs * 1000 < Date.now(); }
+function settleReady(f, m) { return isLocked(m) && f.score && f.score.etFinal; }
+
+// ── live diff → event feed ──────────────────────────────────────────────────
+
+function diffEvents(prev, next) {
+  const ev = [];
+  const prevFx = new Map(prev.fixtures.map((f) => [f.fixtureId, f]));
+  for (const f of next.fixtures) {
+    const o = prevFx.get(f.fixtureId);
+    if (!o) continue;
+
+    const og = o.score?.goals, ng = f.score?.goals;
+    if (og && ng && (ng.p1 > og.p1 || ng.p2 > og.p2)) {
+      const scorer = ng.p1 > og.p1 ? f.p1 : f.p2;
+      ev.push({ tag: 'GOAL', cls: 'goal', fx: f.fixtureId, goal: true, title: `${f.p1} ${ng.p1} – ${ng.p2} ${f.p2}`, sub: `${scorer} scores` });
+    }
+
+    const os = o.score?.statusId, ns = f.score?.statusId;
+    if (ns != null && ns !== os) {
+      const phase = { 2: 'Kick-off', 3: 'Half-time', 4: 'Second half under way', 5: 'Full time', 100: 'Result finalised' }[ns];
+      if (phase) ev.push({ tag: 'MATCH', cls: '', fx: f.fixtureId, title: phase, sub: `${f.p1} vs ${f.p2}` });
+    }
+
+    const prevM = new Map(o.markets.map((m) => [m.address, m]));
+    for (const m of f.markets) {
+      const mo = prevM.get(m.address);
+      if (!mo) continue;
+      if (m.impliedProb != null && mo.impliedProb != null && Math.abs(m.impliedProb - mo.impliedProb) >= 0.01) {
+        ev.push({ tag: 'ODDS', cls: 'odds', title: m.label, sub: `${(mo.impliedProb * 100).toFixed(1)}% → ${(m.impliedProb * 100).toFixed(1)}%` });
+      }
+      if (m.yesPool > mo.yesPool) ev.push({ tag: 'STAKE', cls: 'yes', title: m.label, sub: `+${fmtSol(m.yesPool - mo.yesPool)} SOL on YES` });
+      if (m.noPool > mo.noPool) ev.push({ tag: 'STAKE', cls: 'no', title: m.label, sub: `+${fmtSol(m.noPool - mo.noPool)} SOL on NO` });
+      if (m.state !== mo.state && m.state.startsWith('settled')) {
+        ev.push({ tag: 'PROOF', cls: 'proof', title: m.label, sub: `Merkle proof verified — settled ${m.state === 'settled_yes' ? 'YES' : 'NO'}` });
+      }
+      if (m.state !== mo.state && m.state === 'void') ev.push({ tag: 'VOID', cls: '', title: m.label, sub: 'Voided — stakes refundable' });
+    }
+  }
+  return ev;
+}
+
+function pushFeed(events) {
+  const list = $('#feed-list');
+  if (!list) return;
+  const atBottom = list.scrollHeight - list.scrollTop - list.clientHeight < 60;
+  const t = new Date().toLocaleTimeString('en-GB', { hour12: false });
+  for (const e of events) {
+    list.append(el(`<div class="feed-item ${e.cls}">
+      <span class="feed-tag">${e.tag}</span>
+      <span class="feed-body"><span class="feed-title">${esc(e.title)}</span><span class="feed-sub">${esc(e.sub)}</span></span>
+      <time>${t}</time></div>`));
+  }
+  while (list.children.length > 30) list.firstElementChild.remove();
+  if (atBottom) list.scrollTop = list.scrollHeight;
+}
+
+// Visual side-effects on the cards themselves.
+function eventFx(events) {
+  for (const e of events) {
+    if (!e.goal) continue;
+    const head = $(`[data-fxhead="${e.fx}"]`);
+    if (!head) continue;
+    const card = head.closest('.fixture');
+    if (card) { card.classList.remove('flash'); void card.offsetWidth; card.classList.add('flash'); }
+    const meta = $('.fx-meta', head);
+    if (meta && !$('.goal-pop', meta)) {
+      const pop = el('<span class="goal-pop">GOAL</span>');
+      meta.prepend(pop);
+      setTimeout(() => pop.remove(), 3300);
+    }
+    const score = $(`[data-score="${e.fx}"]`);
+    if (score) { score.classList.remove('flip'); void score.offsetWidth; score.classList.add('flip'); }
+  }
+}
+
+// ── in-place value updates (animate, don't rebuild) ─────────────────────────
+
+function updateValues(d) {
+  for (const f of d.fixtures) {
+    const score = $(`[data-score="${f.fixtureId}"]`);
+    if (score) {
+      const txt = scoreText(f);
+      if (score.textContent !== txt) score.textContent = txt;
+    }
+    for (const m of f.markets) {
+      const num = $(`[data-prob="${m.address}"]`);
+      if (num && m.impliedProb != null) {
+        const from = parseFloat(num.dataset.v ?? '0');
+        const to = m.impliedProb * 100;
+        if (Math.abs(to - from) > 0.05) {
+          num.dataset.v = to.toFixed(1);
+          countUp(num, from, to);
+          const bar = $(`[data-bar="${m.address}"]`);
+          if (bar) bar.style.width = `${Math.min(100, to).toFixed(1)}%`;
+        }
+      }
+      updateChip($(`[data-yes="${m.address}"]`), 'YES', m.yesPool);
+      updateChip($(`[data-no="${m.address}"]`), 'NO', m.noPool);
+    }
+  }
+}
+
+function updateChip(chip, label, pool) {
+  if (!chip) return;
+  const txt = `${label} ${fmtSol(pool)}`;
+  if (chip.textContent === txt) return;
+  chip.textContent = txt;
+  chip.classList.toggle('empty', !pool);
+  chip.classList.remove('bump'); void chip.offsetWidth; chip.classList.add('bump');
+}
+
+function countUp(node, from, to) {
+  const t0 = performance.now(), dur = 550;
+  const tick = (t) => {
+    const k = Math.min(1, (t - t0) / dur);
+    const eased = 1 - Math.pow(1 - k, 3);
+    node.textContent = `${(from + (to - from) * eased).toFixed(1)}%`;
+    if (k < 1 && node.dataset.v === to.toFixed(1)) requestAnimationFrame(tick);
+  };
+  requestAnimationFrame(tick);
 }
 
 // ── wallet ──────────────────────────────────────────────────────────────────
@@ -44,17 +212,21 @@ function renderWallet() {
   $('#wallet-btn').textContent = state.wallet
     ? `${state.wallet.slice(0, 4)}…${state.wallet.slice(-4)} — disconnect`
     : 'Connect Phantom';
-  render();
+  lastStructSig = '';
+  if (state.data) applyState(state.data);
 }
 
-async function sendUnsigned(url) {
+async function sendUnsigned(url, onStage) {
   const provider = window.phantom?.solana ?? window.solana;
+  onStage?.('Building the transaction…');
   const res = await fetch(url);
   const { tx, error } = await res.json();
   if (error) throw new Error(error);
   const raw = Uint8Array.from(atob(tx), (c) => c.charCodeAt(0));
   const transaction = solanaWeb3.Transaction.from(raw);
+  onStage?.('Waiting for the Phantom signature…');
   const { signature } = await provider.signAndSendTransaction(transaction);
+  onStage?.('Submitted — confirming on devnet…');
   return signature;
 }
 
@@ -78,8 +250,10 @@ function stakeModal(m, side) {
     const lamports = Math.round(parseFloat($('#stake-amount').value) * SOL);
     if (!state.wallet) { await toggleWallet(); if (!state.wallet) return; }
     try {
-      msg('stake-msg', 'Waiting for Phantom signature…');
-      const sig = await sendUnsigned(`/api/join-tx?market=${m.address}&side=${side}&lamports=${lamports}&payer=${state.wallet}`);
+      const sig = await sendUnsigned(
+        `/api/join-tx?market=${m.address}&side=${side}&lamports=${lamports}&payer=${state.wallet}`,
+        (s) => msg('stake-msg', s),
+      );
       msg('stake-msg', `Staked. <a target="_blank" rel="noopener" href="${explorer(sig)}">View transaction</a>`, true);
       setTimeout(load, 2500);
     } catch (e) { msg('stake-msg', esc(e.message), false); }
@@ -103,10 +277,20 @@ function stakeModal(m, side) {
 
 async function settle(m) {
   openModal(`<h3>Settling — ${esc(m.label)}</h3>
-    <div class="sub">Fetching the TxLINE Merkle proof and submitting it to the escrow program.
-    The program CPIs into <span class="mono">txoracle.validate_stat</span>; funds unlock only if the oracle answers TRUE.</div>
-    <div id="settle-msg">Working…</div>
+    <div class="sub">Trustless settlement: the escrow program verifies the TxLINE Merkle proof on-chain
+    and evaluates the predicate itself. No oracle multisig, no admin key.</div>
+    <ol class="steps" id="settle-steps">
+      <li>Fetching the Merkle proof from TxLINE <span class="mono">/scores/stat-validation</span></li>
+      <li>Submitting the settle transaction to the escrow program</li>
+      <li><span class="mono">txoracle.validate_stat</span> CPI — proof checked against the anchored root</li>
+      <li>Outcome recorded — pool unlocked for winners</li>
+    </ol>
+    <div id="settle-msg"></div>
     <div class="row"><button class="ghost" onclick="closeModal()">Close</button></div>`);
+  const steps = $$('#settle-steps li');
+  const set = (i, cls) => { if (steps[i]) steps[i].className = cls; };
+  set(0, 'active');
+  const t1 = setTimeout(() => { set(0, 'done'); set(1, 'active'); }, 900);
   try {
     const res = await fetch('/api/settle', {
       method: 'POST', headers: { 'content-type': 'application/json' },
@@ -114,10 +298,21 @@ async function settle(m) {
     });
     const j = await res.json();
     if (j.error) throw new Error(j.error);
+    clearTimeout(t1);
+    set(0, 'done'); set(1, 'done'); set(2, 'active');
+    await pause(600);
+    set(2, 'done'); set(3, 'active');
+    await pause(400);
+    set(3, 'done');
     msg('settle-msg', `Settled ${j.receipt.side.toUpperCase()} — proven on-chain.
       <a target="_blank" rel="noopener" href="${explorer(j.receipt.settleTx)}">Settlement transaction</a>`, true);
-    setTimeout(load, 2000);
-  } catch (e) { msg('settle-msg', esc(e.message), false); }
+    setTimeout(load, 1500);
+  } catch (e) {
+    clearTimeout(t1);
+    const cur = steps.findIndex((s) => s.className === 'active');
+    set(cur >= 0 ? cur : 0, 'fail');
+    msg('settle-msg', esc(e.message), false);
+  }
 }
 
 async function showReceipt(m) {
@@ -160,15 +355,9 @@ function claimable(m) {
 
 // ── render ──────────────────────────────────────────────────────────────────
 
-let lastRendered = '';
-
-function render() {
+function renderFull() {
   const d = state.data;
   if (!d) return;
-  // Skip the full re-render (and the button churn it causes) when nothing changed.
-  const sig = JSON.stringify(d) + (state.wallet ?? '');
-  if (sig === lastRendered) return;
-  lastRendered = sig;
   $('#net').textContent = d.network.toUpperCase();
   const pl = $('#program-link');
   pl.textContent = `program ${d.programId.slice(0, 4)}…${d.programId.slice(-4)}`;
@@ -181,12 +370,12 @@ function render() {
 
   main.innerHTML = fixtures.map((f) => {
     const status = fixtureStatus(f, now);
-    const rows = f.markets.map((m) => marketRow(f, m, status)).join('');
+    const rows = f.markets.map((m) => marketRow(f, m)).join('');
     return `<article class="fixture">
-      <div class="fx-head">
-        <div class="fx-teams">${esc(f.p1)} <span class="score">${scoreText(f)}</span> ${esc(f.p2)}</div>
+      <div class="fx-head" data-fxhead="${f.fixtureId}">
+        <div class="fx-teams">${esc(f.p1)} <span class="score" data-score="${f.fixtureId}">${scoreText(f)}</span> ${esc(f.p2)}</div>
         <div class="fx-meta">
-          <span>${new Date(f.startTime).toLocaleString(undefined, { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })}</span>
+          <span>${new Date(f.startTime).toLocaleString('en-GB', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })}</span>
           <span class="badge ${status.cls}">${status.text}</span>
         </div>
       </div>
@@ -208,22 +397,26 @@ function fixtureStatus(f, now) {
   return { cls: '', text: 'UPCOMING' };
 }
 
-function scoreText() { return 'vs'; }
+function scoreText(f) {
+  const g = f.score?.goals;
+  return g ? `${g.p1} – ${g.p2}` : 'vs';
+}
 
-function marketRow(f, m, status) {
+function marketRow(f, m) {
   const open = m.state === 'open';
-  const locked = open && m.lockTs * 1000 < Date.now();
-  const settleReady = locked && f.score && f.score.etFinal;
+  const locked = isLocked(m);
+  const ready = settleReady(f, m);
   const actions = [];
   if (open && !locked) {
-    actions.push(`<button class="small" onclick='ppStake(${JSON.stringify(m.address)}, 1)'>Stake YES</button>`);
+    actions.push(`<button class="small yes" onclick='ppStake(${JSON.stringify(m.address)}, 1)'>Stake YES</button>`);
     actions.push(`<button class="small no" onclick='ppStake(${JSON.stringify(m.address)}, 2)'>Stake NO</button>`);
   }
-  if (settleReady) actions.push(`<button class="small" onclick='ppSettle(${JSON.stringify(m.address)})'>Settle with proof</button>`);
+  if (ready) actions.push(`<button class="small" onclick='ppSettle(${JSON.stringify(m.address)})'>Settle with proof</button>`);
   if (m.receipt || m.state.startsWith('settled')) actions.push(`<button class="small ghost" onclick='ppReceipt(${JSON.stringify(m.address)})'>Receipt</button>`);
-  const probCell = m.impliedProb != null
-    ? `<div class="prob-wrap"><span class="prob-num">${(m.impliedProb * 100).toFixed(1)}%</span>
-       <div class="prob-bar"><i style="width:${Math.min(100, m.impliedProb * 100).toFixed(1)}%"></i></div></div>`
+  const pct = m.impliedProb != null ? (m.impliedProb * 100).toFixed(1) : null;
+  const probCell = pct != null
+    ? `<div class="prob-wrap"><span class="prob-num" data-prob="${m.address}" data-v="${pct}">${pct}%</span>
+       <div class="prob-bar"><i data-bar="${m.address}" style="width:${Math.min(100, +pct)}%"></i></div></div>`
     : `<div class="prob-wrap"><span class="prob-num na">—</span></div>`;
   const pillCls = locked && open ? 'locked' : m.state;
   const pillText = locked && open ? 'LOCKED' : m.state.replace('_', ' ').toUpperCase();
@@ -231,8 +424,8 @@ function marketRow(f, m, status) {
     <td><div class="m-label">${esc(m.label)}</div><div class="m-explain">${esc(m.explain)}</div></td>
     <td>${probCell}</td>
     <td><div class="pool">
-      <span class="pool-chip yes${m.yesPool ? '' : ' empty'}">YES ${fmtSol(m.yesPool)}</span>
-      <span class="pool-chip no${m.noPool ? '' : ' empty'}">NO ${fmtSol(m.noPool)}</span>
+      <span class="pool-chip yes${m.yesPool ? '' : ' empty'}" data-yes="${m.address}">YES ${fmtSol(m.yesPool)}</span>
+      <span class="pool-chip no${m.noPool ? '' : ' empty'}" data-no="${m.address}">NO ${fmtSol(m.noPool)}</span>
     </div></td>
     <td><span class="pill ${pillCls}">${pillText}</span></td>
     <td><div class="actions">${actions.join('')}</div></td>
@@ -266,6 +459,9 @@ function msg(id, html, ok) {
 
 function esc(s) { return String(s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c])); }
 function el(html) { const d = document.createElement('div'); d.innerHTML = html; return d.firstElementChild; }
+
+// Structure also shifts with the clock (locks, settle windows) — re-check it.
+setInterval(() => { if (state.data) applyState(state.data); }, 30000);
 
 $('#wallet-btn').onclick = toggleWallet;
 load();

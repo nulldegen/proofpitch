@@ -4,5 +4,11 @@ dist/
 .env
 *.keypair.json
 SUBMISSION.md
+VIDEO_SCRIPT.md
 video-build/out/
 *.log
+ngrok-pp.exe
+video-build/
+watchdog.bat
+run_hidden.vbs
+START_PROOFPITCH.bat
