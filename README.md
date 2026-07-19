@@ -11,6 +11,8 @@ Entry for the **Prediction Markets & Settlement** track — TxODDS World Cup Hac
 
 ---
 
+![ProofPitch dashboard — live markets, odds and event feed](docs/dashboard.png)
+
 ## Abstract
 
 Every prediction market shares a single structural weakness: the party that
@@ -29,6 +31,8 @@ The system ran unattended during the tournament's closing matches: at full
 time of the third-place final (France 4–6 England, 18 July 2026), all seven
 markets settled autonomously with real TxLINE proofs, and winning positions
 were subsequently claimed — every transaction of that lifecycle is on devnet.
+
+![Settlement receipt — proven predicate, final statistics, raw Merkle payload, transaction](docs/receipt.png)
 
 ## Protocol lifecycle
 
